@@ -1,0 +1,79 @@
+@page "/business"
+@using Inkvoice.Data
+@using Inkvoice.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@rendermode InteractiveServer
+
+<PageTitle>Business Info</PageTitle>
+<h1>Business Info</h1>
+
+<EditForm Model="business" OnValidSubmit="Save">
+    <div class="mb-2">
+        <label>Name</label>
+        <InputText class="form-control" @bind-Value="business.Name" />
+    </div>
+    <div class="mb-2">
+        <label>Address Line 1</label>
+        <InputText class="form-control" @bind-Value="business.AddressLine1" />
+    </div>
+    <div class="mb-2">
+        <label>Address Line 2</label>
+        <InputText class="form-control" @bind-Value="business.AddressLine2" />
+    </div>
+    <div class="row">
+        <div class="col mb-2">
+            <label>City</label>
+            <InputText class="form-control" @bind-Value="business.City" />
+        </div>
+        <div class="col mb-2">
+            <label>Province</label>
+            <InputText class="form-control" @bind-Value="business.Province" />
+        </div>
+        <div class="col mb-2">
+            <label>Postal Code</label>
+            <InputText class="form-control" @bind-Value="business.PostalCode" />
+        </div>
+    </div>
+    <div class="mb-2">
+        <label>Email</label>
+        <InputText class="form-control" @bind-Value="business.Email" />
+    </div>
+    <div class="mb-2">
+        <label>Phone</label>
+        <InputText class="form-control" @bind-Value="business.Phone" />
+    </div>
+    <div class="mb-2">
+        <label>GST/HST Number</label>
+        <InputText class="form-control" @bind-Value="business.GstHstNumber" />
+    </div>
+
+    <button class="btn btn-primary" type="submit">Save</button>
+</EditForm>
+
+@if (message is not null)
+{
+    <p class="text-success mt-2">@message</p>
+}
+
+@code {
+    private Business business = new();
+    private string? message;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        business = await db.Businesses.FirstOrDefaultAsync() ?? new Business();
+    }
+
+    private async Task Save()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        if (business.Id == 0)
+            db.Businesses.Add(business);
+        else
+            db.Businesses.Update(business);
+        await db.SaveChangesAsync();
+        message = "Saved!";
+    }
+}
