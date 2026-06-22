@@ -1,0 +1,76 @@
+@page "/clients/edit"
+@page "/clients/edit/{Id:int}"
+@using Inkvoice.Data
+@using Inkvoice.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+@rendermode InteractiveServer
+
+<PageTitle>@(Id is null ? "New Client" : "Edit Client")</PageTitle>
+<h1>@(Id is null ? "New Client" : "Edit Client")</h1>
+
+<EditForm Model="client" OnValidSubmit="Save">
+    <div class="mb-2">
+        <label>Name</label>
+        <InputText class="form-control" @bind-Value="client.Name" />
+    </div>
+    <div class="mb-2">
+        <label>Address Line 1</label>
+        <InputText class="form-control" @bind-Value="client.AddressLine1" />
+    </div>
+    <div class="mb-2">
+        <label>Address Line 2</label>
+        <InputText class="form-control" @bind-Value="client.AddressLine2" />
+    </div>
+    <div class="row">
+        <div class="col mb-2">
+            <label>City</label>
+            <InputText class="form-control" @bind-Value="client.City" />
+        </div>
+        <div class="col mb-2">
+            <label>Province</label>
+            <InputText class="form-control" @bind-Value="client.Province" />
+        </div>
+        <div class="col mb-2">
+            <label>Postal Code</label>
+            <InputText class="form-control" @bind-Value="client.PostalCode" />
+        </div>
+    </div>
+    <div class="mb-2">
+        <label>Email</label>
+        <InputText class="form-control" @bind-Value="client.Email" />
+    </div>
+    <div class="mb-2">
+        <label>Phone</label>
+        <InputText class="form-control" @bind-Value="client.Phone" />
+    </div>
+
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-secondary" href="clients">Cancel</a>
+</EditForm>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+    private Client client = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Id is not null)
+        {
+            using var db = await DbFactory.CreateDbContextAsync();
+            client = await db.Clients.FindAsync(Id.Value) ?? new Client();
+        }
+    }
+
+    private async Task Save()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        if (client.Id == 0)
+            db.Clients.Add(client);
+        else
+            db.Clients.Update(client);
+        await db.SaveChangesAsync();
+        Nav.NavigateTo("clients"); 
+    }
+}
