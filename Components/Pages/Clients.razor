@@ -1,0 +1,66 @@
+@page "/clients"
+@using Inkvoice.Data
+@using Inkvoice.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@rendermode InteractiveServer
+
+<PageTitle>Clients</PageTitle>
+<h1>Clients</h1>
+
+<a class="btn btn-primary mb-3" href="clients/edit">+ New Client</a>
+
+@if (clients is null)
+{
+    <p>Loading…</p>
+}
+else if (clients.Count == 0)
+{
+    <p>No clients yet.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr><th>Name</th><th>City</th><th>Email</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var c in clients)
+            {
+                <tr>
+                    <td>@c.Name</td>
+                    <td>@c.City</td>
+                    <td>@c.Email</td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-secondary" href="@($"clients/edit/{c.Id}")">Edit</a>
+                        <button class="btn btn-sm btn-danger" @onclick="() => Delete(c.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Client>? clients;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        clients = await db.Clients.OrderBy(c => c.Name).ToListAsync();
+    }
+
+    private async Task Delete(int id)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var c = await db.Clients.FindAsync(id);
+        if (c is not null)
+        {
+            db.Clients.Remove(c);
+            await db.SaveChangesAsync();
+        }
+        await Load(); 
+    }
+}

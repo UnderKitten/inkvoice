@@ -1,0 +1,78 @@
+@page "/documents"
+@using Inkvoice.Data
+@using Inkvoice.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@rendermode InteractiveServer
+
+<PageTitle>Documents</PageTitle>
+<h1>Invoices & Estimates</h1>
+
+<a class="btn btn-primary mb-3" href="documents/edit">+ New Document</a>
+
+@if (docs is null)
+{
+    <p>Loading…</p>
+}
+else if (docs.Count == 0)
+{
+    <p>Nothing yet.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Number</th>
+                <th>Type</th>
+                <th>Client</th>
+                <th>Date</th>
+                <th>Total</th>
+                <th>Status</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var d in docs)
+            {
+                <tr>
+                    <td>@d.Number</td>
+                    <td>@d.Type</td>
+                    <td>@d.Client?.Name</td>
+                    <td>@d.IssueDate.ToShortDateString()</td>
+                    <td>@d.Total.ToString("C")</td>
+                    <td>@d.Status</td>
+                    <td class="text-end">
+                        <a class="btn btn-sm btn-primary" href="@($"documents/{d.Id}/pdf")" target="_blank">PDF</a>
+                        <a class="btn btn-sm btn-secondary" href="@($"documents/edit/{d.Id}")">Edit</a>
+                        <button class="btn btn-sm btn-danger" @onclick="() => Delete(d.Id)">Delete</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Document>? docs;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        docs = await db.Documents
+            .Include(d => d.Client) // load the client so we can show its name
+            .Include(d => d.Items) // load items so Total can compute
+            .OrderByDescending(d => d.IssueDate)
+            .ToListAsync();
+    }
+
+    private async Task Delete(int id)
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        var d = await db.Documents.FindAsync(id);
+        if (d is not null) { db.Documents.Remove(d); await db.SaveChangesAsync(); }
+        await Load();
+    }
+}

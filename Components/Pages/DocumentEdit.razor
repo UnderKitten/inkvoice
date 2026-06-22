@@ -1,0 +1,185 @@
+@page "/documents/edit"
+@page "/documents/edit/{Id:int}"
+@using Inkvoice.Data
+@using Inkvoice.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject NavigationManager Nav
+@rendermode InteractiveServer
+
+<PageTitle>@(Id is null ? "New Document" : "Edit Document")</PageTitle>
+<h1>@(Id is null ? "New Document" : "Edit Document")</h1>
+
+<EditForm Model="document" OnValidSubmit="Save">
+    <div class="row">
+        <div class="col mb-2">
+            <label>Type</label>
+            <InputSelect class="form-select" @bind-Value="document.Type">
+                @foreach (var t in Enum.GetValues<DocumentType>())
+                {
+                    <option value="@t">@t</option>
+                }
+            </InputSelect>
+        </div>
+        <div class="col mb-2">
+            <label>Number</label>
+            <InputText class="form-control" @bind-Value="document.Number" />
+        </div>
+        <div class="col mb-2">
+            <label>Status</label>
+            <InputSelect class="form-select" @bind-Value="document.Status">
+                @foreach (var s in Enum.GetValues<DocumentStatus>())
+                {
+                    <option value="@s">@s</option>
+                }
+            </InputSelect>
+        </div>
+    </div>
+
+    <div class="mb-2">
+        <label>Client</label>
+        <InputSelect class="form-select" @bind-Value="document.ClientId">
+            <option value="0">— select client —</option>
+            @foreach (var c in clients)
+            {
+                <option value="@c.Id">@c.Name</option>
+            }
+        </InputSelect>
+    </div>
+
+    <div class="row">
+        <div class="col mb-2">
+            <label>Issue Date</label>
+            <InputDate class="form-control" @bind-Value="document.IssueDate" />
+        </div>
+        <div class="col mb-2">
+            <label>Due Date</label>
+            <InputDate class="form-control" @bind-Value="document.DueDate" />
+        </div>
+    </div>
+
+    <div class="mb-2">
+        <label>Comments / Special Instructions</label>
+        <InputTextArea class="form-control" @bind-Value="document.Comments" />
+    </div>
+
+    <h4 class="mt-3">Order Items</h4>
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th style="width:50%">Description</th>
+                <th>Hours</th>
+                <th>Rate</th>
+                <th>Total</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in document.Items)
+            {
+                <tr>
+                    <td>
+                        <InputText class="form-control" @bind-Value="item.ItemName" />
+                    </td>
+                    <td>
+                        <InputText class="form-control" @bind-Value="item.Description" />
+                    </td>
+                    <td>
+                        <InputNumber class="form-control" @bind-Value="item.Hours" />
+                    </td>
+                    <td>
+                        <InputNumber class="form-control" @bind-Value="item.Rate" />
+                    </td>
+                    <td class="align-middle">@item.RowTotal.ToString("C")</td>
+                    <td><button type="button" class="btn btn-sm btn-danger" @onclick="() => RemoveItem(item)">×</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <button type="button" class="btn btn-outline-secondary btn-sm mb-3" @onclick="AddItem">+ Add line</button>
+
+    <div class="text-end">
+        <div class="mb-2">
+            <label class="me-2">Tax rate (%)</label>
+            <InputNumber class="form-control d-inline-block" style="width:90px" @bind-Value="TaxPercent" />
+        </div>
+        <p>Subtotal: <strong>@document.Subtotal.ToString("C")</strong></p>
+        <p>HST (@(TaxPercent.ToString("0.##"))%): <strong>@document.TaxAmount.ToString("C")</strong></p>
+        <p>Total: <strong>@document.Total.ToString("C")</strong></p>
+    </div>
+
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn btn-secondary" href="documents">Cancel</a>
+</EditForm>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+    private Document document = new();
+    private List<Client> clients = new();
+
+    // Type the rate as a percent (13); store it as a fraction (0.13)
+    private decimal TaxPercent
+    {
+        get => document.TaxRate * 100m;
+        set => document.TaxRate = value / 100m;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+        clients = await db.Clients.OrderBy(c => c.Name).ToListAsync();
+
+        if (Id is not null)
+        {
+            document = await db.Documents
+                .Include(d => d.Items)
+                .FirstOrDefaultAsync(d => d.Id == Id.Value) ?? new Document();
+        }
+    }
+
+    private void AddItem() => document.Items.Add(new RowItem());
+    private void RemoveItem(RowItem item) => document.Items.Remove(item);
+
+    private async Task Save()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        if (document.Id == 0)
+        {
+            db.Documents.Add(document);
+        }
+        else
+        {
+            // load the tracked doc + its current items
+            var existing = await db.Documents
+                .Include(d => d.Items)
+                .FirstAsync(d => d.Id == document.Id);
+
+            // copy the scalar fields
+            existing.Type = document.Type;
+            existing.Number = document.Number;
+            existing.ClientId = document.ClientId;
+            existing.IssueDate = document.IssueDate;
+            existing.DueDate = document.DueDate;
+            existing.Comments = document.Comments;
+            existing.Status = document.Status;
+            existing.TaxRate = document.TaxRate;
+
+            // replace the line items wholesale
+            existing.Items.Clear();
+            foreach (var i in document.Items)
+                existing.Items.Add(new RowItem
+                {
+                    ItemName = i.ItemName,
+                    Description = i.Description,
+                    Hours = i.Hours,
+                    Rate = i.Rate
+                });
+        }
+
+        await db.SaveChangesAsync();
+        Nav.NavigateTo("documents");
+    }
+}
