@@ -1,7 +1,149 @@
-﻿@page "/"
+@page "/"
+@using Inkvoice.Data
+@using Inkvoice.Models
+@using Microsoft.EntityFrameworkCore
+@inject IDbContextFactory<AppDbContext> DbFactory
+@rendermode InteractiveServer
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Inkvoice</PageTitle>
 
-<h1>Hello, world!</h1>
+<h1 class="mb-1">@greeting</h1>
+<p class="text-muted">@DateTime.Now.ToString("dddd, MMMM d, yyyy")</p>
 
-Welcome to your new app.
+<div class="mb-4">
+    <a class="btn btn-primary" href="documents/edit">+ New Invoice / Estimate</a>
+    <a class="btn btn-outline-secondary" href="clients/edit">+ New Client</a>
+</div>
+
+@if (loading)
+{
+    <p>Loading…</p>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-md-3 col-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Outstanding</div>
+                    <div class="fs-4 fw-bold">@outstanding.ToString("C")</div>
+                    <div class="small text-muted">@unpaidCount unpaid invoice(s)</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Paid in @DateTime.Now.Year</div>
+                    <div class="fs-4 fw-bold">@paidThisYear.ToString("C")</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Open Estimates</div>
+                    <div class="fs-4 fw-bold">@openEstimates</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Clients</div>
+                    <div class="fs-4 fw-bold">@clientCount</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h4>Recent</h4>
+    @if (recent.Count == 0)
+    {
+        <p class="text-muted">No documents yet — create your first one above.</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+                <tr><th>Number</th><th>Type</th><th>Client</th><th>Date</th><th>Total</th><th>Status</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var d in recent)
+                {
+                    <tr>
+                        <td>@d.Number</td>
+                        <td>@d.Type</td>
+                        <td>@d.Client?.Name</td>
+                        <td>@d.IssueDate.ToShortDateString()</td>
+                        <td>@d.Total.ToString("C")</td>
+                        <td><span class="badge @StatusClass(d.Status)">@d.Status</span></td>
+                        <td class="text-end">
+                            <a class="btn btn-sm btn-secondary" href="@($"documents/edit/{d.Id}")">Edit</a>
+                            <a class="btn btn-sm btn-primary" href="@($"documents/{d.Id}/pdf")" target="_blank">PDF</a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+}
+
+@code {
+    private bool loading = true;
+    private string greeting = "Welcome";
+    private decimal outstanding;
+    private int unpaidCount;
+    private decimal paidThisYear;
+    private int openEstimates;
+    private int clientCount;
+    private List<Document> recent = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var db = await DbFactory.CreateDbContextAsync();
+
+        // Greeting based on time of day + your business name
+        var biz = await db.Businesses.FirstOrDefaultAsync();
+        var part = DateTime.Now.Hour switch
+        {
+            < 12 => "Good morning",
+            < 18 => "Good afternoon",
+            _ => "Good evening"
+        };
+        greeting = string.IsNullOrWhiteSpace(biz?.Name) ? $"{part}!" : $"{part}, {biz!.Name}";
+
+        // Load everything into memory FIRST (see note about computed totals)
+        var docs = await db.Documents
+            .Include(d => d.Items)
+            .Include(d => d.Client)
+            .ToListAsync();
+
+        outstanding = docs
+            .Where(d => d.Type == DocumentType.Invoice && d.Status != DocumentStatus.Paid)
+            .Sum(d => d.Total);
+
+        unpaidCount = docs
+            .Count(d => d.Type == DocumentType.Invoice && d.Status != DocumentStatus.Paid);
+
+        paidThisYear = docs
+            .Where(d => d.Type == DocumentType.Invoice
+                        && d.Status == DocumentStatus.Paid
+                        && d.IssueDate.Year == DateTime.Now.Year)
+            .Sum(d => d.Total);
+
+        openEstimates = docs.Count(d => d.Type == DocumentType.Estimate);
+        clientCount = await db.Clients.CountAsync();
+
+        recent = docs.OrderByDescending(d => d.IssueDate).Take(5).ToList();
+
+        loading = false;
+    }
+
+    private static string StatusClass(DocumentStatus s) => s switch
+    {
+        DocumentStatus.Paid => "text-bg-success",
+        DocumentStatus.Sent => "text-bg-warning",
+        _ => "text-bg-secondary"
+    };
+}
